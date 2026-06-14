@@ -1,9 +1,9 @@
 {
-  "sourceName": "统一模拟数据源",
+  "sourceName": "统一模拟数据源（赛果已校准）",
   "sourceUrl": "./data/live-data.json",
-  "updatedAt": "2026-06-14T08:02:11.781Z",
+  "updatedAt": "2026-06-14T08:27:24.584Z",
   "refreshSeconds": 30,
-  "note": "赔率与赛果均来自同一个数据文件；生产环境可由人工或脚本持续更新此文件。",
+  "note": "赔率与赛果均来自同一个数据文件；赛果字段已按公开报道更新，后续继续更新此文件即可同步页面。",
   "matches": [
     {
       "id": 1,
@@ -61,9 +61,9 @@
     },
     {
       "id": 3,
-      "status": "未开赛",
-      "score": null,
-      "resultUpdatedAt": null,
+      "status": "完场",
+      "score": "1-1",
+      "resultUpdatedAt": "2026-06-14T08:27:24.584Z",
       "oddsUpdatedAt": "2026-06-14T08:02:11.789Z",
       "odds": {
         "home": 2.59,
@@ -88,9 +88,9 @@
     },
     {
       "id": 4,
-      "status": "未开赛",
-      "score": null,
-      "resultUpdatedAt": null,
+      "status": "完场",
+      "score": "4-1",
+      "resultUpdatedAt": "2026-06-14T08:27:24.584Z",
       "oddsUpdatedAt": "2026-06-14T08:02:11.789Z",
       "odds": {
         "home": 2.42,
@@ -115,9 +115,9 @@
     },
     {
       "id": 8,
-      "status": "未开赛",
-      "score": null,
-      "resultUpdatedAt": null,
+      "status": "完场",
+      "score": "1-1",
+      "resultUpdatedAt": "2026-06-14T08:27:24.584Z",
       "oddsUpdatedAt": "2026-06-14T08:02:11.789Z",
       "odds": {
         "home": 4.75,
@@ -142,9 +142,9 @@
     },
     {
       "id": 7,
-      "status": "未开赛",
-      "score": null,
-      "resultUpdatedAt": null,
+      "status": "完场",
+      "score": "1-1",
+      "resultUpdatedAt": "2026-06-14T08:27:24.584Z",
       "oddsUpdatedAt": "2026-06-14T08:02:11.789Z",
       "odds": {
         "home": 2.1,
@@ -169,9 +169,9 @@
     },
     {
       "id": 5,
-      "status": "未开赛",
-      "score": null,
-      "resultUpdatedAt": null,
+      "status": "完场",
+      "score": "0-1",
+      "resultUpdatedAt": "2026-06-14T08:27:24.584Z",
       "oddsUpdatedAt": "2026-06-14T08:02:11.789Z",
       "odds": {
         "home": 4.35,
@@ -196,9 +196,9 @@
     },
     {
       "id": 6,
-      "status": "未开赛",
-      "score": null,
-      "resultUpdatedAt": null,
+      "status": "完场",
+      "score": "2-0",
+      "resultUpdatedAt": "2026-06-14T08:27:24.584Z",
       "oddsUpdatedAt": "2026-06-14T08:02:11.789Z",
       "odds": {
         "home": 2.84,
