@@ -69,6 +69,9 @@ const state = { query:"", stage:"全部", day:"全部", stake:20, slip:[] };
 const markets = [["home","胜"],["draw","平"],["away","负"]];
 const scoreMarkets = ["1-0","2-0","2-1","3-1","0-0","1-1","2-2","0-1","0-2","1-2","胜其他","平其他","负其他"];
 const week = ["周日","周一","周二","周三","周四","周五","周六"];
+const DATA_FEED_URL = "./data/live-data.json";
+const REFRESH_SECONDS = 30;
+let liveMeta = { sourceName:"本地演示模型", updatedAt:null, status:"正在连接统一数据源", error:"" };
 
 function dateOf(date,time,offset){ return new Date(`${date}T${time}:00${offset}`); }
 function oddsFor(home,away,id){
@@ -114,6 +117,66 @@ const matches = [
   ...knockout.map(([id,stage,date,time,offset,home,away,city,venue]) => ({ id,stage,group:"淘汰赛",home,away,city,venue,startsAt:dateOf(date,time,offset),odds:{home:2.35,draw:3.05,away:+(2.72 + (id % 5) * .08).toFixed(2)},scoreOdds:Object.fromEntries(scoreMarkets.map((score,index)=>[score, +(6.5 + index * 1.85 + (id % 4) * .18).toFixed(2)])) }))
 ].sort((a,b)=>a.startsAt-b.startsAt);
 
+function isLocked(m){
+  return Boolean(m.score) || ["完场","已结束","取消","延期","腰斩"].includes(m.status);
+}
+
+function freshnessText(updatedAt){
+  if (!updatedAt) return "等待首次同步";
+  const seconds = Math.max(0, Math.floor((Date.now() - new Date(updatedAt).getTime()) / 1000));
+  if (seconds < 60) return `${seconds} 秒前同步`;
+  const minutes = Math.floor(seconds / 60);
+  if (minutes < 60) return `${minutes} 分钟前同步`;
+  return `${Math.floor(minutes / 60)} 小时前同步`;
+}
+
+function normalizeOdds(value){
+  return Object.fromEntries(Object.entries(value || {}).map(([key, odd]) => [key, Number(odd)]).filter(([, odd]) => Number.isFinite(odd)));
+}
+
+function applyLiveData(payload){
+  const updates = Array.isArray(payload?.matches) ? payload.matches : [];
+  updates.forEach(update => {
+    const m = matches.find(match => match.id === Number(update.id));
+    if (!m) return;
+    if (update.home) m.home = update.home;
+    if (update.away) m.away = update.away;
+    if (update.status) m.status = update.status;
+    if ("score" in update) m.score = update.score || "";
+    if (update.resultText) m.resultText = update.resultText;
+    const odds = normalizeOdds(update.odds);
+    const scoreOdds = normalizeOdds(update.scoreOdds);
+    if (["home","draw","away"].every(key => Number.isFinite(odds[key]))) m.odds = { home:odds.home, draw:odds.draw, away:odds.away };
+    if (scoreMarkets.every(score => Number.isFinite(scoreOdds[score]))) m.scoreOdds = scoreOdds;
+    m.oddsUpdatedAt = update.oddsUpdatedAt || payload.updatedAt || new Date().toISOString();
+    m.resultUpdatedAt = update.resultUpdatedAt || payload.updatedAt || "";
+  });
+  state.slip = state.slip.filter(item => {
+    const m = matches.find(match => match.id === item.matchId);
+    if (!m || isLocked(m)) return false;
+    item.odds = item.market === "比分" ? m.scoreOdds[item.pick] : m.odds[item.pick];
+    return Number.isFinite(item.odds);
+  });
+  liveMeta = {
+    sourceName: payload?.sourceName || "统一数据源",
+    sourceUrl: payload?.sourceUrl || DATA_FEED_URL,
+    updatedAt: payload?.updatedAt || new Date().toISOString(),
+    status: "已同步",
+    error: ""
+  };
+}
+
+async function loadLiveData(){
+  try {
+    const response = await fetch(`${DATA_FEED_URL}?t=${Date.now()}`, { cache:"no-store" });
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    applyLiveData(await response.json());
+  } catch (error) {
+    liveMeta = { ...liveMeta, status:"同步失败，正在使用上次数据", error:String(error.message || error) };
+  }
+  render();
+}
+
 function render(){
   const app = document.querySelector("#app");
   const days = ["全部", ...new Set(matches.map(m => cnTime(m.startsAt).slice(0,6)))];
@@ -123,17 +186,23 @@ function render(){
   });
   const totalOdds = state.slip.reduce((a,i)=>a*i.odds,1);
   const estimate = state.slip.length ? totalOdds * Number(state.stake || 0) : 0;
-  const hot = matches.filter(m=>!m.score).sort((a,b)=>Math.min(a.odds.home,a.odds.away)-Math.min(b.odds.home,b.odds.away)).slice(0,5);
+  const hot = matches.filter(m=>!isLocked(m)).sort((a,b)=>Math.min(a.odds.home,a.odds.away)-Math.min(b.odds.home,b.odds.away)).slice(0,5);
 
   app.innerHTML = `
     <section class="hero">
       <div>
         <p class="eyebrow">🏆 2026 世界杯 · 北京时间</p>
         <h1>绿茵狂想串联单</h1>
-        <p class="lead">104 场比赛、胜平负赔率、比分赔率、快速筛选、单关与串关模拟。所有文案与交互均为中文，赔率为演示模型，适合做产品原型和玩法预览。</p>
+        <p class="lead">104 场比赛、胜平负赔率、比分赔率、快速筛选、单关与串关模拟。赔率与赛果统一从同一个数据源同步，页面会自动刷新。</p>
+        <div class="live-strip">
+          <span>${escapeHtml(liveMeta.status)}</span>
+          <strong>${escapeHtml(liveMeta.sourceName)}</strong>
+          <em>${freshnessText(liveMeta.updatedAt)}</em>
+          ${liveMeta.error ? `<small>${escapeHtml(liveMeta.error)}</small>` : ""}
+        </div>
       </div>
       <div class="scoreboard">
-        <div><span>比赛</span><strong>104</strong></div><div><span>已选</span><strong>${state.slip.length}</strong></div><div><span>预计返还</span><strong>¥${estimate.toFixed(2)}</strong></div>
+        <div><span>比赛</span><strong>104</strong></div><div><span>已结束</span><strong>${matches.filter(isLocked).length}</strong></div><div><span>预计返还</span><strong>¥${estimate.toFixed(2)}</strong></div>
       </div>
     </section>
     <section class="shell">
@@ -158,7 +227,7 @@ function render(){
         </div>
       </aside>
       <section class="content">
-        <div class="toolbar"><div><strong>${filtered.length}</strong> 场比赛</div><p>按开赛时间排序，全部时间已换算为北京时间</p></div>
+        <div class="toolbar"><div><strong>${filtered.length}</strong> 场比赛</div><p>按开赛时间排序，全部时间已换算为北京时间；每 ${REFRESH_SECONDS} 秒自动同步赔率与赛果</p></div>
         <div class="match-list">${filtered.map(cardHtml).join("")}</div>
       </section>
     </section>`;
@@ -169,14 +238,17 @@ function render(){
 function cardHtml(m){
   const active = key => state.slip.some(i=>i.matchId===m.id && i.pick===key && i.market === "胜平负");
   const scoreActive = score => state.slip.some(i=>i.matchId===m.id && i.pick===score && i.market === "比分");
-  return `<article class="match ${m.score ? "finished" : ""}">
+  const locked = isLocked(m);
+  const status = locked ? (m.status || "完场") : (m.status || "未开赛");
+  return `<article class="match ${locked ? "finished" : ""}">
     <div class="match-top"><span class="tag">第${m.id}场 · ${m.stage}${m.stage==="小组赛" ? ` · ${m.group}组` : ""}</span><span class="time">⏱ ${cnTime(m.startsAt)}</span></div>
     <div class="teams"><strong>${escapeHtml(m.home)}</strong><span>${m.score || "VS"}</span><strong>${escapeHtml(m.away)}</strong></div>
     <div class="meta">${escapeHtml(m.city)} · ${escapeHtml(m.venue)}</div>
+    <div class="status-row"><span>${escapeHtml(status)}</span><em>${m.resultUpdatedAt ? `赛果 ${freshnessText(m.resultUpdatedAt)}` : `赔率 ${freshnessText(m.oddsUpdatedAt || liveMeta.updatedAt)}`}</em></div>
     <div class="market-title"><span>胜平负</span><em>90分钟赛果</em></div>
-    <div class="odds">${markets.map(([key,label])=>`<button ${m.score ? "disabled" : ""} class="${active(key) ? "active" : ""}" data-pick="${m.id}:${key}"><span>${label}</span><strong>${m.odds[key].toFixed(2)}</strong></button>`).join("")}</div>
+    <div class="odds">${markets.map(([key,label])=>`<button ${locked ? "disabled" : ""} class="${active(key) ? "active" : ""}" data-pick="${m.id}:${key}"><span>${label}</span><strong>${m.odds[key].toFixed(2)}</strong></button>`).join("")}</div>
     <div class="market-title score-title"><span>比分赔率</span><em>点选精准比分</em></div>
-    <div class="score-odds">${scoreMarkets.map(score=>`<button ${m.score ? "disabled" : ""} class="${scoreActive(score) ? "active" : ""}" data-score-pick="${m.id}:${score}"><span>${score}</span><strong>${m.scoreOdds[score].toFixed(2)}</strong></button>`).join("")}</div>
+    <div class="score-odds">${scoreMarkets.map(score=>`<button ${locked ? "disabled" : ""} class="${scoreActive(score) ? "active" : ""}" data-score-pick="${m.id}:${score}"><span>${score}</span><strong>${m.scoreOdds[score].toFixed(2)}</strong></button>`).join("")}</div>
   </article>`;
 }
 
@@ -190,7 +262,7 @@ function bindEvents(){
   document.querySelectorAll("[data-pick]").forEach(btn => btn.addEventListener("click", () => {
     const [id, pick] = btn.dataset.pick.split(":");
     const m = matches.find(x => x.id === Number(id));
-    if (!m || m.score) return;
+    if (!m || isLocked(m)) return;
     const label = markets.find(x => x[0] === pick)[1];
     state.slip = state.slip.filter(i => i.matchId !== m.id);
     state.slip.push({ matchId:m.id, match:`${m.home} vs ${m.away}`, market:"胜平负", pick, label, odds:m.odds[pick] });
@@ -199,7 +271,7 @@ function bindEvents(){
   document.querySelectorAll("[data-score-pick]").forEach(btn => btn.addEventListener("click", () => {
     const [id, score] = btn.dataset.scorePick.split(":");
     const m = matches.find(x => x.id === Number(id));
-    if (!m || m.score) return;
+    if (!m || isLocked(m)) return;
     state.slip = state.slip.filter(i => i.matchId !== m.id);
     state.slip.push({ matchId:m.id, match:`${m.home} vs ${m.away}`, market:"比分", pick:score, label:score, odds:m.scoreOdds[score] });
     render();
@@ -207,3 +279,5 @@ function bindEvents(){
 }
 
 render();
+loadLiveData();
+setInterval(loadLiveData, REFRESH_SECONDS * 1000);
